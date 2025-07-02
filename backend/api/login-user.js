@@ -8,11 +8,14 @@ const parentClient = createClient(
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  console.log('Incoming body:', req.body);
+
   const { org_code, email, reg_no } = req.body;
 
-  if (!org_code || !email || !reg_no)
+  if (!org_code || !email || !reg_no){
+    console.log('❌ Missing:', { org_code, email, reg_no });
     return res.status(400).json({ error: 'Missing required fields' });
-
+  }
   // Step 1: Get DB details from parent DB
   const { data: school, error } = await parentClient
     .from('schools')
