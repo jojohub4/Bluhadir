@@ -38,6 +38,13 @@ export default async function handler(req, res) {
     const orgClient = createClient(org.db_url, org.anon_key);
     console.log('✅ Connected to org DB');
 
+    const { data: dump } = await orgClient
+      .from('students')
+      .select('id, email, reg_no')
+      .limit(10);
+
+    console.log('🗂 Sample student records:', dump);
+
     // Step 2: Check for student match
     const { data: student, error: loginError } = await orgClient
       .from('students')
