@@ -42,8 +42,9 @@ export default async function handler(req, res) {
     const { data: student, error: loginError } = await orgClient
       .from('students')
       .select('*')
-      .eq('email', email)
-      .eq('reg_no', reg_no)
+      .eq('email', email.toLowerCase())
+      .eq('reg_no', reg_no.toLowerCase())
+
       .maybeSingle();
 
     if (loginError || !student) {
@@ -101,4 +102,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error', detail: err.message });
   }
 }
-
