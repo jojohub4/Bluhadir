@@ -6,72 +6,99 @@ const parentClient = createClient(
 );
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  try {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
 
-  const { org_code, email, reg_no, device_id } = req.body;
+    const { org_code, email, reg_no, device_id } = req.body;
 
-  console.log('Incoming:', { org_code, email, reg_no, device_id });
+    console.log('📥 Incoming Request:', { org_code, email, reg_no, device_id });
 
-  if (!org_code || !email || !reg_no || !device_id) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
+    if (!org_code || !email || !reg_no || !device_id) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
 
-  // Get org DB credentials
-  const { data: org, error } = await parentClient
-    .from('schools')
-    .select('db_url, anon_key, status')
-    .eq('org_code', org_code)
-    .single();
+    // Step 1: Fetch organization DB credentials
+    const { data: org, error: orgError } = await parentClient
+      .from('schools')
+      .select('db_url, anon_key, status')
+      .eq('org_code', org_code)
+      .single();
 
-  if (error || !org) return res.status(404).json({ error: 'Invalid organization code' });
-  if (org.status !== 'active') return res.status(403).json({ error: 'Organization suspended' });
+    if (orgError || !org) {
+      console.error('❌ Invalid org code:', orgError);
+      return res.status(404).json({ error: 'Invalid organization code' });
+    }
 
-  const orgClient = createClient(org.db_url, org.anon_key);
+    if (org.status !== 'active') {
+      return res.status(403).json({ error: 'Organization suspended' });
+    }
 
-  // Check for student match
-  const { data: student, error: loginError } = await orgClient
-    .from('students')
-    .select('*')
-    .eq('email', email)
-    .eq('reg_no', reg_no)
-    .maybeSingle();
+    const orgClient = createClient(org.db_url, org.anon_key);
+    console.log('✅ Connected to org DB');
 
-  if (loginError || !student)
-    return res.status(401).json({ error: 'Invalid credentials' });
-
-  // Rule 1: Device already bound to another account
-  const { data: other } = await orgClient
-    .from('students')
-    .select('id')
-    .neq('email', email)
-    .eq('device_id', device_id)
-    .maybeSingle();
-
-  if (other) {
-    return res.status(403).json({
-      error: 'This device is already linked to another account.',
-    });
-  }
-
-  // Rule 2: Account is already bound to another device
-  if (student.device_id && student.device_id !== device_id) {
-    return res.status(403).json({
-      error: 'This account is already locked to a different device.',
-    });
-  }
-
-  // First time login — bind device
-  if (!student.device_id) {
-    await orgClient
+    // Step 2: Check for student match
+    const { data: student, error: loginError } = await orgClient
       .from('students')
-      .update({ device_id })
-      .eq('id', student.id);
-    student.device_id = device_id;
-  }
+      .select('*')
+      .eq('email', email)
+      .eq('reg_no', reg_no)
+      .maybeSingle();
 
-  // Success
-  return res.status(200).json({
-    message: 'Login successful',
-    student,
-  });
+    if (loginError || !student) {
+      console.warn('⚠️ Invalid credentials');
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Step 3: Check if device is used by another student
+    const { data: other } = await orgClient
+      .from('students')
+      .select('id')
+      .neq('email', email)
+      .eq('device_id', device_id)
+      .maybeSingle();
+
+    if (other) {
+      console.warn('🔒 Device already linked to another account');
+      return res.status(403).json({
+        error: 'This device is already linked to another account.',
+      });
+    }
+
+    // Step 4: Check if student already locked to different device
+    if (student.device_id && student.device_id !== device_id) {
+      console.warn('🔐 Account is locked to a different device');
+      return res.status(403).json({
+        error: 'This account is already locked to a different device.',
+      });
+    }
+
+    // Step 5: First login, bind device
+    if (!student.device_id) {
+      const { error: updateError } = await orgClient
+        .from('students')
+        .update({ device_id })
+        .eq('id', student.id);
+
+      if (updateError) {
+        console.error('❌ Failed to bind device_id:', updateError);
+        return res.status(500).json({ error: 'Failed to lock device' });
+      }
+
+      student.device_id = device_id; // update local copy
+    }
+
+    // ✅ Success
+    console.log('✅ Login success for', student.email);
+    return res.status(200).json({
+      message: 'Login successful',
+      student,
+    });
+
+  } catch (err) {
+    console.error('🔥 Unhandled Error:', err);
+    return res.status(500).json({ error: 'Internal server error', detail: err.message });
+  }
 }
+
