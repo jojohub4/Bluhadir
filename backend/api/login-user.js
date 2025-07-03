@@ -46,15 +46,14 @@ export default async function handler(req, res) {
     console.log('🗂 Sample student records:', dump);
 
     // Step 2: Check for student match
+    console.log('🔎 Checking email match with:', email);
+    console.log('🔎 Checking reg_no match with:', reg_no);
+
     const { data: student, error: loginError } = await orgClient
       .from('students')
       .select('*')
-      .eq('email', email)
-      console.log('🔎 Checking email match with:', email)
-
-      .eq('reg_no', reg_no)
-      console.log('🔎 Checking reg_no match with:', reg_no)
-
+      .eq('email', email.trim())
+      .eq('reg_no', reg_no.trim())
       .maybeSingle();
 
     if (loginError || !student) {
@@ -135,3 +134,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error', detail: err.message });
   }
 }
+
