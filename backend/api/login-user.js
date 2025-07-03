@@ -50,7 +50,10 @@ export default async function handler(req, res) {
       .from('students')
       .select('*')
       .eq('email', email)
+      console.log('🔎 Checking email match with:', email)
+
       .eq('reg_no', reg_no)
+      console.log('🔎 Checking reg_no match with:', reg_no)
 
       .maybeSingle();
 
