@@ -44,13 +44,35 @@ export default async function handler(req, res) {
       .select('*')
       .eq('email', email.toLowerCase())
       .eq('reg_no', reg_no.toLowerCase())
-
       .maybeSingle();
 
     if (loginError || !student) {
       console.warn('⚠️ Invalid credentials');
-      return res.status(401).json({ error: 'Invalid credentials' });
+
+      // DEBUG: Check email match
+      const { data: emailMatch } = await orgClient
+        .from('students')
+        .select('id, reg_no')
+        .eq('email', email.toLowerCase());
+
+      // DEBUG: Check reg_no match
+      const { data: regNoMatch } = await orgClient
+        .from('students')
+        .select('id, email')
+        .eq('reg_no', reg_no.toLowerCase());
+
+      console.log('🔍 Email match:', emailMatch);
+      console.log('🔍 Reg No match:', regNoMatch);
+
+      return res.status(401).json({
+        error: 'Invalid credentials',
+        debug: {
+          emailFound: emailMatch?.length > 0,
+          regNoFound: regNoMatch?.length > 0,
+        },
+      });
     }
+
 
     // Step 3: Check if device is used by another student
     const { data: other } = await orgClient
