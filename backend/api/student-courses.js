@@ -7,10 +7,10 @@ const parentPool = new Pool({
 });
 
 // Helper: Get school DB URL from parent DB
-async function getDatabaseUrlFromSchoolCode(school_code) {
+async function getDatabaseUrlFromSchoolCode(org_code) {
   const client = await parentPool.connect();
   try {
-    const res = await client.query('SELECT database_url FROM schools WHERE school_code = $1 LIMIT 1', [school_code]);
+    const res = await client.query('SELECT database_url FROM schools WHERE org_code = $1 LIMIT 1', [org_code]);
     if (res.rows.length === 0) throw new Error('School not found');
     return res.rows[0].database_url;
   } finally {
@@ -42,14 +42,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { email, reg_no, school_code } = req.query;
+  const { email, reg_no, org_code } = req.query;
 
-  if (!email || !reg_no || !school_code) {
+  if (!email || !reg_no || !org_code) {
     return res.status(400).json({ error: 'Missing required parameters' });
   }
 
   try {
-    const dbUrl = await getDatabaseUrlFromSchoolCode(school_code);
+    const dbUrl = await getDatabaseUrlFromSchoolCode(org_code);
 
     const schoolPool = new Pool({
       connectionString: dbUrl,
