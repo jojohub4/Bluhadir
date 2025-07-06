@@ -6,11 +6,14 @@ const parentPool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
-// Helper: Get school DB URL from parent DB
+// Get school DB URL by org_code
 async function getDatabaseUrlFromSchoolCode(org_code) {
   const client = await parentPool.connect();
   try {
-    const res = await client.query('SELECT database_url FROM schools WHERE org_code = $1 LIMIT 1', [org_code]);
+    const res = await client.query(
+      'SELECT database_url FROM schools WHERE org_code = $1 LIMIT 1',
+      [org_code]
+    );
     if (res.rows.length === 0) throw new Error('School not found');
     return res.rows[0].database_url;
   } finally {
@@ -18,6 +21,7 @@ async function getDatabaseUrlFromSchoolCode(org_code) {
   }
 }
 
+// Semester/year logic
 function getCurrentSemesterAndYear(regDate, level) {
   const now = new Date();
   const intakes = [0, 4, 8]; // Jan, May, Sept
@@ -29,7 +33,9 @@ function getCurrentSemesterAndYear(regDate, level) {
   );
   registrationDate.setMonth(closestIntake);
   registrationDate.setDate(1);
-  const monthsDiff = (now.getFullYear() - registrationDate.getFullYear()) * 12 + (currentMonth - registrationDate.getMonth());
+  const monthsDiff =
+    (now.getFullYear() - registrationDate.getFullYear()) * 12 +
+    (currentMonth - registrationDate.getMonth());
   const semesterIndex = Math.floor(monthsDiff / 4);
   const year = Math.floor(semesterIndex / 2) + 1;
   const semester = semesterIndex % 2 === 0 ? 1 : 2;
@@ -37,19 +43,25 @@ function getCurrentSemesterAndYear(regDate, level) {
   return { year: Math.min(year, maxYear), semester };
 }
 
+// MAIN HANDLER
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
+  if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { email, reg_no, org_code } = req.query;
+  // ✅ Log full body
+  console.log('📥 Incoming POST:', req.body);
+
+  const { email, reg_no, org_code } = req.body;
 
   if (!email || !reg_no || !org_code) {
+    console.warn('⚠️ Missing params:', { email, reg_no, org_code });
     return res.status(400).json({ error: 'Missing required parameters' });
   }
 
   try {
     const dbUrl = await getDatabaseUrlFromSchoolCode(org_code);
+    console.log('✅ DB URL fetched:', dbUrl);
 
     const schoolPool = new Pool({
       connectionString: dbUrl,
@@ -67,6 +79,7 @@ export default async function handler(req, res) {
       const studentResult = await client.query(studentQuery, [email, reg_no]);
 
       if (studentResult.rows.length === 0) {
+        console.warn('❌ Student not found:', { email, reg_no });
         return res.status(404).json({ error: 'Student not found' });
       }
 
@@ -88,6 +101,8 @@ export default async function handler(req, res) {
       `;
       const coursesResult = await client.query(coursesQuery, [course, `Y${year}`, `S${semester}`]);
 
+      console.log('✅ Login + Course fetch success for:', student.email);
+
       return res.status(200).json({
         student: { ...student, year, semester },
         courses: coursesResult.rows,
@@ -96,7 +111,8 @@ export default async function handler(req, res) {
       client.release();
     }
   } catch (err) {
-    console.error('Error:', err);
+    console.error('🔥 Internal error:', err.message);
+    console.error(err.stack);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
