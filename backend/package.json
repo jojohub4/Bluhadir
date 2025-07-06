@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@supabase/supabase-js": "^2.42.2"
+    "@supabase/supabase-js": "^2.42.2",
+    "pg": "^8.16.3"
   }
 }
