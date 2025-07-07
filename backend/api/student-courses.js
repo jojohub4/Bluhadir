@@ -11,11 +11,11 @@ async function getDatabaseUrlFromSchoolCode(org_code) {
   const client = await parentPool.connect();
   try {
     const res = await client.query(
-      'SELECT database_url FROM schools WHERE org_code = $1 LIMIT 1',
+      'SELECT db_url FROM schools WHERE org_code = $1 LIMIT 1',
       [org_code]
     );
     if (res.rows.length === 0) throw new Error('School not found');
-    return res.rows[0].database_url;
+    return res.rows[0].db_url;
   } finally {
     client.release();
   }
