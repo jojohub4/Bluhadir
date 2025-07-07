@@ -1,15 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
-import { Pool } from 'pg';
 
-// Supabase parent DB client (API-based, authenticated)
 const parentClient = createClient(
-  process.env.PARENT_DB_URL,            // Supabase URL (e.g., https://xyz.supabase.co)
-  process.env.PARENT_SERVICE_ROLE       // service_role key
+  process.env.PARENT_DB_URL,
+  process.env.PARENT_SERVICE_ROLE
 );
 
 console.log('✅ Supabase parent client initialized');
 
-// 🔍 Fetch school DB credentials from parent Supabase table
 async function getSchoolCredentials(org_code) {
   console.log(`🔍 Fetching credentials for org_code: ${org_code}`);
 
@@ -29,7 +26,6 @@ async function getSchoolCredentials(org_code) {
   return data;
 }
 
-// Main API handler
 export default async function handler(req, res) {
   console.log('📥 Request received:', req.body);
 
@@ -47,63 +43,49 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'School not found or inactive' });
     }
 
-    // Connect to school DB directly
-    const schoolPool = new Pool({
-      connectionString: school.db_url,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 10000,
-    });
+    const schoolClient = createClient(school.db_url, school.anon_key);
 
-    let schoolClient;
-    try {
-      console.log('🔗 Connecting to school DB...');
-      schoolClient = await schoolPool.connect();
-      console.log('✅ Connected to school DB');
+    // 🔍 Fetch student
+    const { data: student, error: studentError } = await schoolClient
+      .from('students')
+      .select('id, first_name, last_name, course, level, date_of_registration')
+      .eq('email', email)
+      .eq('reg_no', reg_no)
+      .maybeSingle();
 
-      const studentQuery = `
-        SELECT id, first_name, last_name, course, level, date_of_registration 
-        FROM students 
-        WHERE email = $1 AND reg_no = $2 
-        LIMIT 1
-      `;
-      const studentRes = await schoolClient.query(studentQuery, [email, reg_no]);
-
-      if (studentRes.rows.length === 0) {
-        console.warn('⚠️ Student not found in school DB');
-        return res.status(404).json({ error: 'Student not found' });
-      }
-
-      const student = studentRes.rows[0];
-      console.log('👤 Found student:', `${student.first_name} ${student.last_name}`);
-
-      const { year, semester } = getCurrentSemesterAndYear(
-        student.date_of_registration,
-        student.level
-      );
-      console.log(`📅 Calculated Year: ${year}, Semester: ${semester}`);
-
-      const coursesQuery = `
-        SELECT id, course_code, course_name 
-        FROM courses 
-        WHERE program = $1 AND year = $2 AND semester = $3
-      `;
-      const coursesParams = [student.course, `Y${year}`, `S${semester}`];
-      const coursesRes = await schoolClient.query(coursesQuery, coursesParams);
-
-      console.log(`📚 Found ${coursesRes.rows.length} courses`);
-
-      return res.status(200).json({
-        student: { ...student, year, semester },
-        courses: coursesRes.rows,
-      });
-
-    } catch (err) {
-      console.error('🔥 School DB error:', err);
-      return res.status(500).json({ error: 'Failed to fetch student/courses' });
-    } finally {
-      if (schoolClient) schoolClient.release();
-      schoolPool.end();
+    if (studentError || !student) {
+      console.warn('⚠️ Student not found:', studentError);
+      return res.status(404).json({ error: 'Student not found' });
     }
+
+    console.log('👤 Found student:', `${student.first_name} ${student.last_name}`);
+
+    const { year, semester } = getCurrentSemesterAndYear(
+      student.date_of_registration,
+      student.level
+    );
+
+    console.log(`📅 Calculated Year: ${year}, Semester: ${semester}`);
+
+    // 🔍 Fetch courses
+    const { data: courses, error: coursesError } = await schoolClient
+      .from('courses')
+      .select('id, course_code, course_name')
+      .eq('program', student.course)
+      .eq('year', `Y${year}`)
+      .eq('semester', `S${semester}`);
+
+    if (coursesError) {
+      console.error('🔥 Failed to fetch courses:', coursesError);
+      return res.status(500).json({ error: 'Failed to fetch courses' });
+    }
+
+    console.log(`📚 Found ${courses.length} courses`);
+
+    return res.status(200).json({
+      student: { ...student, year, semester },
+      courses,
+    });
 
   } catch (err) {
     console.error('🔥 Handler error:', err);
