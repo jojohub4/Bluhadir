@@ -1,10 +1,10 @@
-import { Pool } from 'pg';
+import { createClient } from '@supabase/supabase-js'
 
-// Parent DB connection
-const parentPool = new Pool({
-  connectionString: process.env.PARENT_DB_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+const parentClient = createClient(
+  process.env.PARENT_DB_URL, // Supabase URL, not postgres://...
+  process.env.PARENT_SERVICE_ROLE
+);
+
 
 console.log('ℹ️ Parent DB Connection Pool created');
 
