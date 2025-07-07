@@ -64,7 +64,7 @@ export default async function handler(req, res) {
 
   try {
     const { dbUrl, anonKey } = await getDatabaseUrlFromSchoolCode(org_code);
-    
+
     const schoolPool = new Pool({
       connectionString: dbUrl,
       ssl: { rejectUnauthorized: false }
@@ -105,9 +105,15 @@ export default async function handler(req, res) {
 
       console.log('✅ Login + Course fetch success for:', student.email);
 
+      // In your student-courses.js endpoint, before the final response
+      console.log('✅ Final response payload:', {
+        student: { ...student, year, semester },
+        courses: coursesResult.rows
+      });
+
       return res.status(200).json({
         student: { ...student, year, semester },
-        courses: coursesResult.rows,
+        courses: coursesResult.rows
       });
     } finally {
       client.release();
