@@ -11,11 +11,14 @@ async function getDatabaseUrlFromSchoolCode(org_code) {
   const client = await parentPool.connect();
   try {
     const res = await client.query(
-      'SELECT db_url FROM schools WHERE org_code = $1 LIMIT 1',
+      'SELECT db_url, anon_key FROM schools WHERE org_code = $1 LIMIT 1',
       [org_code]
     );
     if (res.rows.length === 0) throw new Error('School not found');
-    return res.rows[0].db_url;
+    return {
+      dbUrl: res.rows[0].db_url,
+      anonKey: res.rows[0].anon_key
+    };
   } finally {
     client.release();
   }
@@ -60,12 +63,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const dbUrl = await getDatabaseUrlFromSchoolCode(org_code);
-    console.log('✅ DB URL fetched:', dbUrl);
-
+    const { dbUrl, anonKey } = await getDatabaseUrlFromSchoolCode(org_code);
+    
     const schoolPool = new Pool({
       connectionString: dbUrl,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: { rejectUnauthorized: false }
     });
 
     const client = await schoolPool.connect();
