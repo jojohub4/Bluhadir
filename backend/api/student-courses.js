@@ -70,7 +70,7 @@ export default async function handler(req, res) {
     // 🔍 Fetch courses
     const { data: courses, error: coursesError } = await schoolClient
       .from('courses')
-      .select('id, course_code, course_name')
+      .select('id, course_code, course_name, delivery_mode')
       .eq('program', student.course)
       .eq('year', `Y${year}`)
       .eq('semester', `S${semester}`);
