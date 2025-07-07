@@ -2,7 +2,7 @@ import { Pool } from 'pg';
 
 // Parent DB connection
 const parentPool = new Pool({
-  connectionString: process.env.PARENT_DATABASE_URL,
+  connectionString: process.env.PARENT_DB_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
