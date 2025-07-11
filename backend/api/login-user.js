@@ -126,7 +126,13 @@ export default async function handler(req, res) {
     console.log('✅ Login success for', student.email);
     return res.status(200).json({
       message: 'Login successful',
-      student,
+      student: {
+    id: student.id,
+    email: student.email,
+    reg_no: student.reg_no,
+    first_name: student.first_name,
+    program: student.program,
+  }
     });
 
   } catch (err) {
