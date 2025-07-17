@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
-const { writeFileSync, appendFileSync } = require('fs');
-const path = require('path');
+import { writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get directory name for ES modules
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const parentClient = createClient(
   process.env.PARENT_DB_URL,
@@ -9,12 +13,12 @@ const parentClient = createClient(
 
 // Enhanced logging function
 function logToFile(message, data = null) {
-  const logDir = path.join(process.cwd(), 'logs');
+  const logDir = path.join(__dirname, 'logs');
   const logPath = path.join(logDir, 'api-debug.log');
   
   try {
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
+    if (!existsSync(logDir)) {
+      mkdirSync(logDir, { recursive: true });
     }
     
     const timestamp = new Date().toISOString();
