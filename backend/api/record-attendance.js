@@ -1,15 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
-const { appendFileSync, mkdirSync, existsSync } = require('fs');
-const path = require('path');
+import { appendFileSync, mkdirSync, existsSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const parentClient = createClient(
-  process.env.PARENT_DB_URL,
-  process.env.PARENT_SERVICE_ROLE
-);
+// Fix __dirname for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 function logEvent(message) {
   const date = new Date().toISOString().slice(0, 10);
-  const logDir = path.join(process.cwd(), 'logs');
+  const logDir = path.join(__dirname, '..', 'logs');
   const logPath = path.join(logDir, `attendance-${date}.log`);
 
   if (!existsSync(logDir)) mkdirSync(logDir);
@@ -17,6 +17,11 @@ function logEvent(message) {
   const timestamp = new Date().toISOString();
   appendFileSync(logPath, `[${timestamp}] ${message}\n`);
 }
+
+const parentClient = createClient(
+  process.env.PARENT_DB_URL,
+  process.env.PARENT_SERVICE_ROLE
+);
 
 async function getSchoolClient(org_code) {
   const { data, error } = await parentClient
@@ -73,17 +78,13 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Invalid organization code' });
     }
 
-    const { data: existingRecord, error: fetchError } = await schoolClient
+    const { data: existingRecord } = await schoolClient
       .from('attendance')
       .select()
       .eq('student_id', student_id)
       .eq('course_code', course_code)
       .eq('date', date)
       .maybeSingle();
-
-    if (fetchError) {
-      logEvent(`❌ Fetch error: ${fetchError.message}`);
-    }
 
     logEvent(existingRecord
       ? `📄 Existing record found for ${student_id} on ${date}`
