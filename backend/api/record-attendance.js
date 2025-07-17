@@ -24,61 +24,74 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Add this to the top of the file
-const { writeFileSync, appendFileSync } = require('fs');
-const path = require('path');
+  const {
+    org_code,
+    student_id,
+    course_code,
+    course_name,
+    student_name,
+    reg_no,
+    email,
+    program,
+    beacon_name,
+    uuid,
+    major,
+    minor,
+    date,
+    time,
+    action
+  } = req.body;
 
-// Inside POST handler
-const {
-  org_code,
-  student_id,
-  course_code,
-  course_name,
-  student_name,
-  reg_no,
-  email,
-  program,
-  beacon_name,
-  uuid,
-  major,
-  minor,
-  date,
-  time,
-  action,
-  log
-} = req.body;
-
-// store attendance in DB (same as before)
-await schoolClient.from('attendance').upsert({
-  student_id,
-  course_code,
-  date,
-  [action]: time
-}, {
-  onConflict: 'student_id,course_code,date'
-});
-
-// 🔥 Save full log string to a local file (optional)
-const logDir = path.join(process.cwd(), 'logs');
-const logPath = path.join(logDir, `attendance-${date}.log`);
-appendFileSync(logPath, `${log}\n`);
-
-
-  if (!org_code || !student_id || !course_code || !check_type || !time || !date) {
+  if (!org_code || !student_id || !course_code || !action || !time || !date) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
   try {
     const schoolClient = await getSchoolClient(org_code);
-    if (!schoolClient) return res.status(404).json({ error: 'Invalid organization code' });
+    if (!schoolClient) {
+      return res.status(404).json({ error: 'Invalid organization code' });
+    }
 
-    // Upsert attendance record
-    const { error } = await schoolClient.from('attendance').upsert({
-      student_id,
+    // First get existing record if it exists
+    const { data: existingRecord, error: fetchError } = await schoolClient
+      .from('attendance')
+      .select()
+      .eq('student_id', student_id)
+      .eq('course_code', course_code)
+      .eq('date', date)
+      .maybeSingle();
+
+    let updateData = {
+      student_id: parseInt(student_id),
+      student_name,
+      reg_no,
+      email,
+      program,
       course_code,
+      course_name,
+      beacon_name,
+      uuid,
+      major,
+      minor,
       date,
-      [check_type]: time
-    }, {
+      [action === 'check_in' ? 'check_in' : 'check_out']: time
+    };
+
+    // Calculate total_hours if both check_in and check_out exist
+    if (existingRecord) {
+      if (action === 'check_out' && existingRecord.check_in) {
+        const checkInTime = new Date(`1970-01-01T${existingRecord.check_in}Z`);
+        const checkOutTime = new Date(`1970-01-01T${time}Z`);
+        const diffMs = checkOutTime - checkInTime;
+        const diffHrs = Math.floor(diffMs / 3600000);
+        const diffMins = Math.floor((diffMs % 3600000) / 60000);
+        
+        updateData.total_hours = `${diffHrs.toString().padStart(2, '0')}:${diffMins.toString().padStart(2, '0')}`;
+      }
+    }
+
+    // Upsert the attendance record
+    const { error } = await schoolClient.from('attendance').upsert(updateData, {
       onConflict: 'student_id,course_code,date'
     });
 
@@ -86,6 +99,12 @@ appendFileSync(logPath, `${log}\n`);
       console.error('❌ Attendance DB Error:', error);
       return res.status(500).json({ error: 'Failed to record attendance' });
     }
+
+    // Log the attendance (optional)
+    const logDir = path.join(process.cwd(), 'logs');
+    const logPath = path.join(logDir, `attendance-${date}.log`);
+    const logEntry = `[${new Date().toISOString()}] ${student_name} (${regNo}) ${action} for ${course_code} at ${time}\n`;
+    appendFileSync(logPath, logEntry);
 
     return res.status(200).json({ message: 'Attendance recorded successfully' });
 
