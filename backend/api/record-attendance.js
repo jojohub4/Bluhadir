@@ -76,6 +76,12 @@ export default async function handler(req, res) {
       logEvent('error', 'Error fetching existing attendance record', fetchError);
     }
 
+    // Validate and normalize action
+    const safeAction = (action || '').toLowerCase();
+    if (!['check_in', 'check_out'].includes(safeAction)) {
+      return res.status(400).json({ error: 'Invalid action type' });
+    }
+
     let updateData = {
       student_id: parseInt(student_id),
       student_name,
@@ -89,8 +95,9 @@ export default async function handler(req, res) {
       major,
       minor,
       date,
-      [action === 'check_in' ? 'check_in' : 'check_out']: time
+      [safeAction]: time  // ✅ dynamic field key
     };
+
 
     // Add total_hours if both check-in and check-out exist
     if (existingRecord && action === 'check_out' && existingRecord.check_in) {
