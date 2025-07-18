@@ -1,28 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
-import { appendFileSync, mkdirSync, existsSync } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
-// Fix __dirname for ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-function logEvent(message) {
-  const date = new Date().toISOString().slice(0, 10);
-  const logDir = path.join(__dirname, '..', 'logs');
-  const logPath = path.join(logDir, `attendance-${date}.log`);
-
-  if (!existsSync(logDir)) mkdirSync(logDir);
-
-  const timestamp = new Date().toISOString();
-  appendFileSync(logPath, `[${timestamp}] ${message}\n`);
-}
-
+// Parent Supabase connection
 const parentClient = createClient(
   process.env.PARENT_DB_URL,
   process.env.PARENT_SERVICE_ROLE
 );
 
+// Logging function to console
+function logEvent(level, message, context = {}) {
+  console.log(`[${new Date().toISOString()}] [${level.toUpperCase()}] ${message}`, context);
+}
+
+// Get school-specific Supabase client
 async function getSchoolClient(org_code) {
   const { data, error } = await parentClient
     .from('schools')
@@ -32,22 +21,19 @@ async function getSchoolClient(org_code) {
     .maybeSingle();
 
   if (error || !data) {
-    logEvent(`❌ Failed to fetch school DB for org_code=${org_code}`);
+    logEvent('error', 'Failed to fetch school client', { error, org_code });
     return null;
   }
 
-  logEvent(`✅ Connected to school DB for org_code=${org_code}`);
   return createClient(data.db_url, data.anon_key);
 }
 
+// Handler function
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    logEvent(`❌ Rejected ${req.method} request`);
+    logEvent('warn', 'Invalid method attempt', { method: req.method });
     return res.status(405).json({ error: 'Method not allowed' });
   }
-
-  const payload = req.body;
-  logEvent(`📥 Incoming attendance payload: ${JSON.stringify(payload)}`);
 
   const {
     org_code,
@@ -65,10 +51,10 @@ export default async function handler(req, res) {
     date,
     time,
     action
-  } = payload;
+  } = req.body;
 
   if (!org_code || !student_id || !course_code || !action || !time || !date) {
-    logEvent(`❌ Missing required fields`);
+    logEvent('error', 'Missing required fields', req.body);
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
@@ -78,7 +64,7 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Invalid organization code' });
     }
 
-    const { data: existingRecord } = await schoolClient
+    const { data: existingRecord, error: fetchError } = await schoolClient
       .from('attendance')
       .select()
       .eq('student_id', student_id)
@@ -86,11 +72,11 @@ export default async function handler(req, res) {
       .eq('date', date)
       .maybeSingle();
 
-    logEvent(existingRecord
-      ? `📄 Existing record found for ${student_id} on ${date}`
-      : `🆕 No existing record found — will insert`);
+    if (fetchError) {
+      logEvent('error', 'Error fetching existing attendance record', fetchError);
+    }
 
-    const updateData = {
+    let updateData = {
       student_id: parseInt(student_id),
       student_name,
       reg_no,
@@ -106,6 +92,7 @@ export default async function handler(req, res) {
       [action === 'check_in' ? 'check_in' : 'check_out']: time
     };
 
+    // Add total_hours if both check-in and check-out exist
     if (existingRecord && action === 'check_out' && existingRecord.check_in) {
       const checkInTime = new Date(`1970-01-01T${existingRecord.check_in}Z`);
       const checkOutTime = new Date(`1970-01-01T${time}Z`);
@@ -115,20 +102,23 @@ export default async function handler(req, res) {
       updateData.total_hours = `${diffHrs.toString().padStart(2, '0')}:${diffMins.toString().padStart(2, '0')}`;
     }
 
-    const { error: upsertError } = await schoolClient
-      .from('attendance')
-      .upsert(updateData, { onConflict: 'student_id,course_code,date' });
+    const { error: upsertError } = await schoolClient.from('attendance').upsert(updateData, {
+      onConflict: 'student_id,course_code,date'
+    });
 
     if (upsertError) {
-      logEvent(`❌ Upsert error: ${upsertError.message}`);
+      logEvent('error', 'Failed to upsert attendance', upsertError);
       return res.status(500).json({ error: 'Failed to record attendance' });
     }
 
-    logEvent(`✅ Attendance ${action} recorded for ${student_name} (${reg_no}) on ${date} at ${time}`);
+    logEvent('info', `${student_name} (${regNo}) ${action} at ${time}`, {
+      student_id, course_code, date
+    });
+
     return res.status(200).json({ message: 'Attendance recorded successfully' });
 
   } catch (err) {
-    logEvent(`🔥 Unexpected error: ${err.message}`);
+    logEvent('fatal', 'Unexpected error during attendance record', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
