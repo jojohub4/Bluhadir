@@ -76,9 +76,10 @@ export default async function handler(req, res) {
       logEvent('error', 'Error fetching existing attendance record', fetchError);
     }
 
-    // Validate and normalize action
-    const safeAction = (action || '').toLowerCase();
-    if (!['check_in', 'check_out'].includes(safeAction)) {
+    // Update the action validation and column assignment
+    const validActions = ['check_in', 'check_out'];
+    if (!validActions.includes(action)) {
+      logEvent('error', 'Invalid action received', { action });
       return res.status(400).json({ error: 'Invalid action type' });
     }
 
@@ -94,9 +95,15 @@ export default async function handler(req, res) {
       uuid,
       major,
       minor,
-      date,
-      [safeAction]: time  // ✅ dynamic field key
+      date
     };
+
+    // Explicitly set the correct column based on action
+    if (action === 'check_in') {
+      updateData.check_in = time;
+    } else {
+      updateData.check_out = time;
+    }
 
 
     // Add total_hours if both check-in and check-out exist
