@@ -111,7 +111,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to record attendance' });
     }
 
-    logEvent('info', `${student_name} (${regNo}) ${action} at ${time}`, {
+    logEvent('info', `${student_name} (${reg_no}) ${action} at ${time}`, {
       student_id, course_code, date
     });
 
