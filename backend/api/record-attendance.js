@@ -89,20 +89,22 @@ export default async function handler(req, res) {
     action,
   };
 
-  logEvent('info', 'Prepared attendance data for insertion', attendanceData);
+  logEvent('info', 'Prepared attendance data for upsert', attendanceData);
 
-  const { error: insertError } = await schoolClient
+  const { error: upsertError } = await schoolClient
     .from('attendance')
-    .insert([attendanceData]);
+    .upsert([attendanceData], {
+      onConflict: ['student_id', 'course_code', 'date', 'action'],
+    });
 
-  if (insertError) {
-    logEvent('error', 'Failed to insert attendance record', {
-      error: insertError.message,
+  if (upsertError) {
+    logEvent('error', 'Failed to upsert attendance record', {
+      error: upsertError.message,
       attendanceData,
     });
     return res
       .status(500)
-      .json({ error: 'Failed to record attendance', details: insertError.message });
+      .json({ error: 'Failed to record attendance', details: upsertError.message });
   }
 
   logEvent('info', `Attendance recorded successfully for ${student_name}`, {
