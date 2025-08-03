@@ -1,0 +1,35 @@
+// /api/student-attendance.ts
+import { createClient } from '@supabase/supabase-js';
+
+const parentClient = createClient(process.env.PARENT_DB_URL, process.env.PARENT_SERVICE_ROLE);
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { org_code, student_id, start_date, end_date } = req.body;
+
+  if (!org_code || !student_id || !start_date || !end_date)
+    return res.status(400).json({ error: 'Missing fields' });
+
+  const { data: school, error } = await parentClient
+    .from('schools')
+    .select('db_url, anon_key')
+    .eq('org_code', org_code)
+    .maybeSingle();
+
+  if (error || !school) return res.status(404).json({ error: 'School not found' });
+
+  const schoolClient = createClient(school.db_url, school.anon_key);
+
+  const { data, error: fetchError } = await schoolClient
+    .from('attendance')
+    .select('*')
+    .eq('student_id', student_id)
+    .gte('date', start_date)
+    .lte('date', end_date)
+    .order('date', { ascending: false });
+
+  if (fetchError) return res.status(500).json({ error: fetchError.message });
+
+  return res.status(200).json({ attendance: data });
+}
